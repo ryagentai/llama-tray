@@ -556,7 +556,7 @@ static DWORD WINAPI WorkerScanThread(LPVOID lpParam) {
                 fprintf(f, "\n      --cache-type-k q8_0 --cache-type-v q8_0");
             }
 
-            int ctx = (wcsstr(lower, L"e4b") && matched_assistant[0]) ? 8192 : 131072;
+            int ctx = 131072; // Full 128K Context Window
             int is_gemma = (wcsstr(lower, L"gemma") != NULL || wcsstr(lower, L"e4b") != NULL);
             const char *fa_str = is_gemma ? "--flash-attn off" : "--flash-attn on";
 
