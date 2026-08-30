@@ -1,0 +1,39 @@
+# llama-swap config — Auto-Generated with Dynamic Rules
+listen: 127.0.0.1:8888
+healthCheckTimeout: 180
+startPort: 15800
+logLevel: info
+
+models:
+  gemma-4-12b-it-q4_k_m:
+    ttl: 300
+    proxy: http://127.0.0.1:${PORT}
+    cmd: >-
+      F:/llama.cpp/llama-server.exe -m "F:/llama.cpp/models/gemma-4-12b-it-Q4_K_M.gguf"
+      --mmproj "F:/llama.cpp/models/mmproj-F16.gguf"
+      --host 127.0.0.1 --port ${PORT} --ctx-size 131072 --batch-size 4096 --ubatch-size 2048 --n-gpu-layers 99 --flash-attn on --no-webui
+
+  gemma-4-e4b-abliterated.q4_k_m:
+    ttl: 300
+    proxy: http://127.0.0.1:${PORT}
+    cmd: >-
+      F:/llama.cpp/llama-server.exe -m "F:/llama.cpp/models/Gemma-4-E4B-Abliterated.Q4_K_M.gguf"
+      --model-draft "F:/llama.cpp/models/gemma-4-E4B-it-assistant.Q4_K_M.gguf" --spec-type draft-mtp
+      --host 127.0.0.1 --port ${PORT} --ctx-size 8192 --batch-size 4096 --ubatch-size 2048 --n-gpu-layers 99 --flash-attn on --no-webui
+
+  ministral-3-14b-reasoning-2512-q4_k_m:
+    ttl: 300
+    proxy: http://127.0.0.1:${PORT}
+    cmd: >-
+      F:/llama.cpp/llama-server.exe -m "F:/llama.cpp/models/Ministral-3-14B-Reasoning-2512-Q4_K_M.gguf"
+      --cache-type-k q8_0 --cache-type-v q8_0
+      --host 127.0.0.1 --port ${PORT} --ctx-size 131072 --batch-size 4096 --ubatch-size 2048 --n-gpu-layers 99 --flash-attn on --no-webui
+
+  qwen3.8-9b-q4_k_m:
+    ttl: 300
+    proxy: http://127.0.0.1:${PORT}
+    cmd: >-
+      F:/llama.cpp/llama-server.exe -m "F:/llama.cpp/models/Qwen3.8-9B-Q4_K_M.gguf"
+      --spec-type draft-mtp
+      --host 127.0.0.1 --port ${PORT} --ctx-size 131072 --batch-size 4096 --ubatch-size 2048 --n-gpu-layers 99 --flash-attn on --no-webui
+
