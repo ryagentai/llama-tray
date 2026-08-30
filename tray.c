@@ -603,7 +603,7 @@ static DWORD WINAPI WorkerScanThread(LPVOID lpParam) {
             int is_gemma = (wcsstr(lower, L"gemma") != NULL || wcsstr(lower, L"e4b") != NULL);
             const char *fa_str = is_gemma ? "--flash-attn off" : "--flash-attn on";
 
-            fprintf(f, "\n      --host 127.0.0.1 --port ${PORT} --ctx-size %d --batch-size 4096 --ubatch-size 2048 --n-gpu-layers 99 %s --no-webui\n\n", ctx, fa_str);
+            fprintf(f, "\n      --host 127.0.0.1 --port ${PORT} --ctx-size %d --batch-size 4096 --ubatch-size 2048 --n-gpu-layers 99 %s --reasoning-budget 4096 --reasoning-format deepseek-legacy --no-webui\n\n", ctx, fa_str);
         }
         fclose(f);
     }
