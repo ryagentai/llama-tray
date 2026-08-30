@@ -271,7 +271,7 @@ static void start_swap(void) {
     si.dwFlags = STARTF_USESHOWWINDOW;
     si.wShowWindow = SW_HIDE;
     PROCESS_INFORMATION pi = {0};
-    if (CreateProcessW(g_swapExe, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, g_base, &si, &pi)) {
+    if (CreateProcessW(NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, g_base, &si, &pi)) {
         g_swapPid = pi.dwProcessId;
         if (g_job) AssignProcessToJobObject(g_job, pi.hProcess);
         CloseHandle(pi.hThread);
