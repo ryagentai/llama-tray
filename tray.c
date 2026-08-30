@@ -1,5 +1,5 @@
 // llama-tray.c — Native Asynchronous System Tray with Real Graphical Floating Progress HUD & Active Model Indicator
-// Build: gcc -O2 -DUNICODE -D_UNICODE "-Wl,-subsystem,windows" -o llama-tray.exe tray.c -lwinhttp -lshell32 -lgdi32 -luser32 -lcomctl32 -lkernel32 -lole32 -lcomdlg32
+// Build: gcc -O2 -DUNICODE -D_UNICODE "-Wl,-subsystem,windows" -o llama-tray.exe tray.c resource.res -lwinhttp -lshell32 -lgdi32 -luser32 -lcomctl32 -lkernel32 -lole32 -lcomdlg32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shellapi.h>
@@ -40,7 +40,7 @@ static volatile int g_hudProgress   = 0;
 static volatile int g_hudVisible    = 0;
 
 static wchar_t   g_status[128]      = L"Ready (Idle)";
-static wchar_t   g_activeModel[64]  = {0}; // Currently active loaded model
+static wchar_t   g_activeModel[64]  = {0};
 static wchar_t   g_tip[128]         = L"llama.cpp tray";
 static wchar_t   g_ram[32]          = L"RAM ?";
 static volatile LONG g_isScanning   = 0;
@@ -313,7 +313,6 @@ static int http_req(const char *verb, const char *path, const char *body) {
     return (int)status;
 }
 
-// Query running model ID from llama-swap API
 static void update_running_model_from_api(void) {
     HINTERNET hS = WinHttpOpen(L"llama-tray-running/1.0", WINHTTP_ACCESS_TYPE_NO_PROXY, NULL, NULL, 0);
     if (!hS) return;
@@ -329,8 +328,9 @@ static void update_running_model_from_api(void) {
         if (WinHttpReadData(hR, buf, sizeof(buf) - 1, &read) && read > 0) {
             buf[read] = 0;
             char *p = strstr(buf, "[\"");
+            if (!p) p = strstr(buf, "\"model\":\"");
             if (p) {
-                p += 2;
+                p = strchr(p, ':') ? (strchr(p, ':') + 2) : (p + 2);
                 char *end = strchr(p, '"');
                 if (end) {
                     *end = 0;
@@ -399,7 +399,7 @@ static DWORD WINAPI LogStreamMonitorThread(LPVOID lpParam) {
         while (WinHttpReadData(hR, buffer, sizeof(buffer) - 1, &bytesRead) && bytesRead > 0) {
             buffer[bytesRead] = 0;
             
-            if (strstr(buffer, "loading model") || strstr(buffer, "load_tensors")) {
+            if (strstr(buffer, "loading model") || strstr(buffer, "load_tensors") || strstr(buffer, "load_model:")) {
                 char *pct_pos = strstr(buffer, "%");
                 int pct = 50;
                 if (pct_pos && pct_pos > buffer + 3) {
@@ -427,14 +427,14 @@ static DWORD WINAPI LogStreamMonitorThread(LPVOID lpParam) {
                     PostMessageW(hwnd, WM_HUD_UPDATE, (WPARAM)hm, 0);
                 }
             }
-            else if (strstr(buffer, "server is listening") || strstr(buffer, "HTTP server listening") || strstr(buffer, "model loaded")) {
+            else if (strstr(buffer, "server is listening") || strstr(buffer, "HTTP server listening") || strstr(buffer, "model loaded") || strstr(buffer, "all slots are idle")) {
                 update_running_model_from_api();
                 HUDMsg *hm = (HUDMsg*)malloc(sizeof(HUDMsg));
                 if (hm) {
                     wsprintfW(hm->title, L"🚀 %ls Ready", g_activeModel[0] ? g_activeModel : L"Model");
                     wsprintfW(hm->subtitle, L"Model is 100%% active in GPU VRAM.");
                     hm->progress = 100;
-                    hm->auto_hide_ms = 2000;
+                    hm->auto_hide_ms = 1800;
                     PostMessageW(hwnd, WM_HUD_UPDATE, (WPARAM)hm, 0);
                 }
                 wcscpy(g_status, L"🟢 Active (Ready)");
@@ -596,7 +596,7 @@ static DWORD WINAPI WorkerScanThread(LPVOID lpParam) {
                 fprintf(f, "\n      --cache-type-k q8_0 --cache-type-v q8_0");
             }
 
-            int ctx = 131072; // Full 128K Context Window
+            int ctx = 131072;
             int is_gemma = (wcsstr(lower, L"gemma") != NULL || wcsstr(lower, L"e4b") != NULL);
             const char *fa_str = is_gemma ? "--flash-attn off" : "--flash-attn on";
 
@@ -686,14 +686,46 @@ static DWORD WINAPI TriggerLoadThread(LPVOID lpParam) {
         if (hm) {
             wsprintfW(hm->title, L"Loading: %ls", wmodel);
             wsprintfW(hm->subtitle, L"Launching llama-server & streaming weights to VRAM...");
-            hm->progress = 10;
+            hm->progress = 25;
             hm->auto_hide_ms = 0;
             PostMessageW(g_hwnd, WM_HUD_UPDATE, (WPARAM)hm, 0);
         }
 
-        char req[320];
-        wsprintfA(req, "{\"model\":\"%s\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":1}", tc->model);
-        http_req("POST", "/v1/chat/completions", req);
+        // Dedicated HTTP client with generous 45-second timeout for model loading
+        HINTERNET hS = WinHttpOpen(L"llama-tray-loader/1.0", WINHTTP_ACCESS_TYPE_NO_PROXY, NULL, NULL, 0);
+        if (hS) {
+            WinHttpSetTimeouts(hS, 5000, 5000, 45000, 45000);
+            HINTERNET hC = WinHttpConnect(hS, L"127.0.0.1", 8888, 0);
+            if (hC) {
+                HINTERNET hR = WinHttpOpenRequest(hC, L"POST", L"/v1/chat/completions", NULL, WINHTTP_NO_REFERER,
+                                                  WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
+                if (hR) {
+                    char req[320];
+                    wsprintfA(req, "{\"model\":\"%s\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":1}", tc->model);
+                    DWORD blen = (DWORD)strlen(req);
+                    if (WinHttpSendRequest(hR, L"Content-Type: application/json\r\n", (DWORD)-1, (LPVOID)req, blen, blen, 0) &&
+                        WinHttpReceiveResponse(hR, NULL)) {
+                        DWORD status = 0, sz = sizeof(status);
+                        WinHttpQueryHeaders(hR, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, NULL, &status, &sz, NULL);
+                        if (status == 200) {
+                            HUDMsg *hm_done = (HUDMsg*)malloc(sizeof(HUDMsg));
+                            if (hm_done) {
+                                wsprintfW(hm_done->title, L"🚀 %ls Ready", wmodel);
+                                wsprintfW(hm_done->subtitle, L"Model is 100%% active in GPU VRAM.");
+                                hm_done->progress = 100;
+                                hm_done->auto_hide_ms = 1800;
+                                PostMessageW(g_hwnd, WM_HUD_UPDATE, (WPARAM)hm_done, 0);
+                            }
+                            wcscpy(g_status, L"🟢 Active (Ready)");
+                            update_tray_tip();
+                        }
+                    }
+                    WinHttpCloseHandle(hR);
+                }
+                WinHttpCloseHandle(hC);
+            }
+            WinHttpCloseHandle(hS);
+        }
         free(tc);
     }
     return 0;
@@ -763,11 +795,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_TRAY:
         if (lp == WM_RBUTTONUP) {
             POINT pt; GetCursorPos(&pt);
-            update_running_model_from_api(); // Refresh active model state instantly
+            update_running_model_from_api();
             
             HMENU m = CreatePopupMenu();
             
-            // Header status line
             wchar_t info[128];
             if (g_activeModel[0]) {
                 wsprintfW(info, L"🟢 Active: %ls · %ls", g_activeModel, g_ram);
@@ -778,7 +809,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             AppendMenuW(m, MF_SEPARATOR, 0, NULL);
             AppendMenuW(m, MF_STRING, IDM_OPEN, L"Open Web UI");
             
-            // Models submenu with real checkmarks
             if (g_modelCount > 0) {
                 HMENU lm = CreatePopupMenu();
                 for (int i = 0; i < g_modelCount; i++) {
