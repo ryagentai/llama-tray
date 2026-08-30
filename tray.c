@@ -389,7 +389,7 @@ static DWORD WINAPI LogStreamMonitorThread(LPVOID lpParam) {
                     PostMessageW(hwnd, WM_HUD_UPDATE, (WPARAM)hm, 0);
                 }
             }
-            else if (strstr(buffer, "server is listening") || strstr(buffer, "HTTP server listening") || strstr(buffer, "all slots are idle")) {
+            else if (strstr(buffer, "server is listening") || strstr(buffer, "HTTP server listening") || strstr(buffer, "model loaded")) {
                 HUDMsg *hm = (HUDMsg*)malloc(sizeof(HUDMsg));
                 if (hm) {
                     wsprintfW(hm->title, L"🚀 Model Loaded & Ready");
@@ -557,7 +557,10 @@ static DWORD WINAPI WorkerScanThread(LPVOID lpParam) {
             }
 
             int ctx = (wcsstr(lower, L"e4b") && matched_assistant[0]) ? 8192 : 131072;
-            fprintf(f, "\n      --host 127.0.0.1 --port ${PORT} --ctx-size %d --batch-size 4096 --ubatch-size 2048 --n-gpu-layers 99 --flash-attn on --no-webui\n\n", ctx);
+            int is_gemma = (wcsstr(lower, L"gemma") != NULL || wcsstr(lower, L"e4b") != NULL);
+            const char *fa_str = is_gemma ? "--flash-attn off" : "--flash-attn on";
+
+            fprintf(f, "\n      --host 127.0.0.1 --port ${PORT} --ctx-size %d --batch-size 4096 --ubatch-size 2048 --n-gpu-layers 99 %s --no-webui\n\n", ctx, fa_str);
         }
         fclose(f);
     }
