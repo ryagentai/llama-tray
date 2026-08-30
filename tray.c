@@ -1,4 +1,4 @@
-// llama-tray.c — Native Asynchronous System Tray with Real Graphical Floating Progress HUD (English UI)
+// llama-tray.c — Native Asynchronous System Tray with Real Graphical Floating Progress HUD & Active Model Indicator
 // Build: gcc -O2 -DUNICODE -D_UNICODE "-Wl,-subsystem,windows" -o llama-tray.exe tray.c -lwinhttp -lshell32 -lgdi32 -luser32 -lcomctl32 -lkernel32 -lole32 -lcomdlg32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -39,10 +39,11 @@ static wchar_t   g_hudSubtitle[128] = L"Transferring tensor weights to VRAM...";
 static volatile int g_hudProgress   = 0;
 static volatile int g_hudVisible    = 0;
 
-static wchar_t   g_status[128] = L"Ready (Idle)";
-static wchar_t   g_tip[128]    = L"llama.cpp tray";
-static wchar_t   g_ram[32]     = L"RAM ?";
-static volatile LONG g_isScanning = 0;
+static wchar_t   g_status[128]      = L"Ready (Idle)";
+static wchar_t   g_activeModel[64]  = {0}; // Currently active loaded model
+static wchar_t   g_tip[128]         = L"llama.cpp tray";
+static wchar_t   g_ram[32]          = L"RAM ?";
+static volatile LONG g_isScanning   = 0;
 
 #define MAX_MODELS 64
 static wchar_t   g_models[MAX_MODELS][64];
@@ -312,6 +313,39 @@ static int http_req(const char *verb, const char *path, const char *body) {
     return (int)status;
 }
 
+// Query running model ID from llama-swap API
+static void update_running_model_from_api(void) {
+    HINTERNET hS = WinHttpOpen(L"llama-tray-running/1.0", WINHTTP_ACCESS_TYPE_NO_PROXY, NULL, NULL, 0);
+    if (!hS) return;
+    WinHttpSetTimeouts(hS, 300, 300, 300, 300);
+    HINTERNET hC = WinHttpConnect(hS, L"127.0.0.1", 8888, 0);
+    if (!hC) { WinHttpCloseHandle(hS); return; }
+    HINTERNET hR = WinHttpOpenRequest(hC, L"GET", L"/running", NULL, WINHTTP_NO_REFERER,
+                                      WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
+    if (!hR) { WinHttpCloseHandle(hC); WinHttpCloseHandle(hS); return; }
+    if (WinHttpSendRequest(hR, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) &&
+        WinHttpReceiveResponse(hR, NULL)) {
+        char buf[512] = {0}; DWORD read = 0;
+        if (WinHttpReadData(hR, buf, sizeof(buf) - 1, &read) && read > 0) {
+            buf[read] = 0;
+            char *p = strstr(buf, "[\"");
+            if (p) {
+                p += 2;
+                char *end = strchr(p, '"');
+                if (end) {
+                    *end = 0;
+                    MultiByteToWideChar(CP_UTF8, 0, p, -1, g_activeModel, 64);
+                } else {
+                    g_activeModel[0] = 0;
+                }
+            } else {
+                g_activeModel[0] = 0;
+            }
+        }
+    }
+    WinHttpCloseHandle(hR); WinHttpCloseHandle(hC); WinHttpCloseHandle(hS);
+}
+
 static void get_sys_ram(void) {
     MEMORYSTATUSEX ms; ms.dwLength = sizeof(ms);
     if (GlobalMemoryStatusEx(&ms)) wsprintfW(g_ram, L"RAM %u%%", ms.dwMemoryLoad);
@@ -323,7 +357,11 @@ static void update_tray_tip(void) {
     if (InterlockedCompareExchange(&g_isScanning, 0, 0) == 1) {
         wsprintfW(g_tip, L"llama.cpp · [%d%% Scanning] · %ls", g_hudProgress, g_hudSubtitle);
     } else {
-        wsprintfW(g_tip, L"llama.cpp · %ls · %ls", g_status, g_ram);
+        if (g_activeModel[0]) {
+            wsprintfW(g_tip, L"llama.cpp · [Active: %ls] · %ls", g_activeModel, g_ram);
+        } else {
+            wsprintfW(g_tip, L"llama.cpp · [Idle] · %ls", g_ram);
+        }
     }
     g_tip[127] = 0;
     g_nid.uFlags = NIF_TIP | NIF_ICON | NIF_MESSAGE;
@@ -390,9 +428,10 @@ static DWORD WINAPI LogStreamMonitorThread(LPVOID lpParam) {
                 }
             }
             else if (strstr(buffer, "server is listening") || strstr(buffer, "HTTP server listening") || strstr(buffer, "model loaded")) {
+                update_running_model_from_api();
                 HUDMsg *hm = (HUDMsg*)malloc(sizeof(HUDMsg));
                 if (hm) {
-                    wsprintfW(hm->title, L"🚀 Model Loaded & Ready");
+                    wsprintfW(hm->title, L"🚀 %ls Ready", g_activeModel[0] ? g_activeModel : L"Model");
                     wsprintfW(hm->subtitle, L"Model is 100%% active in GPU VRAM.");
                     hm->progress = 100;
                     hm->auto_hide_ms = 2000;
@@ -402,6 +441,7 @@ static DWORD WINAPI LogStreamMonitorThread(LPVOID lpParam) {
                 update_tray_tip();
             }
             else if (strstr(buffer, "unloading model") || strstr(buffer, "model unloaded")) {
+                g_activeModel[0] = 0;
                 HUDMsg *hm = (HUDMsg*)malloc(sizeof(HUDMsg));
                 if (hm) {
                     wsprintfW(hm->title, L"💤 VRAM Released (Idle)");
@@ -640,6 +680,7 @@ static DWORD WINAPI TriggerLoadThread(LPVOID lpParam) {
     if (tc) {
         wchar_t wmodel[64];
         MultiByteToWideChar(CP_UTF8, 0, tc->model, -1, wmodel, 64);
+        wcscpy(g_activeModel, wmodel);
 
         HUDMsg *hm = (HUDMsg*)malloc(sizeof(HUDMsg));
         if (hm) {
@@ -668,6 +709,7 @@ static void trigger_load_async(const char *model_id) {
 }
 
 static DWORD WINAPI UnloadAllThread(LPVOID lpParam) {
+    g_activeModel[0] = 0;
     HUDMsg *hm = (HUDMsg*)malloc(sizeof(HUDMsg));
     if (hm) {
         wsprintfW(hm->title, L"Unloading Models...");
@@ -721,22 +763,37 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_TRAY:
         if (lp == WM_RBUTTONUP) {
             POINT pt; GetCursorPos(&pt);
+            update_running_model_from_api(); // Refresh active model state instantly
+            
             HMENU m = CreatePopupMenu();
             
+            // Header status line
             wchar_t info[128];
-            wsprintfW(info, L"%ls · %ls", g_status, g_ram);
+            if (g_activeModel[0]) {
+                wsprintfW(info, L"🟢 Active: %ls · %ls", g_activeModel, g_ram);
+            } else {
+                wsprintfW(info, L"💤 Idle (No model in VRAM) · %ls", g_ram);
+            }
             AppendMenuW(m, MF_STRING | MF_DISABLED | MF_GRAYED, 0, info);
             AppendMenuW(m, MF_SEPARATOR, 0, NULL);
             AppendMenuW(m, MF_STRING, IDM_OPEN, L"Open Web UI");
             
+            // Models submenu with real checkmarks
             if (g_modelCount > 0) {
                 HMENU lm = CreatePopupMenu();
                 for (int i = 0; i < g_modelCount; i++) {
-                    wchar_t buf[96];
-                    wsprintfW(buf, L"Load %ls", g_models[i]);
-                    AppendMenuW(lm, MF_STRING, IDM_MODEL_BASE + i, buf);
+                    wchar_t buf[128];
+                    int is_active = (g_activeModel[0] && _wcsicmp(g_models[i], g_activeModel) == 0);
+                    
+                    if (is_active) {
+                        wsprintfW(buf, L"✓ %ls  [Active]", g_models[i]);
+                        AppendMenuW(lm, MF_STRING | MF_CHECKED, IDM_MODEL_BASE + i, buf);
+                    } else {
+                        wsprintfW(buf, L"   %ls", g_models[i]);
+                        AppendMenuW(lm, MF_STRING | MF_UNCHECKED, IDM_MODEL_BASE + i, buf);
+                    }
                 }
-                AppendMenuW(m, MF_POPUP, (UINT_PTR)lm, L"Load Model");
+                AppendMenuW(m, MF_POPUP, (UINT_PTR)lm, L"Select / Switch Model");
             }
             
             AppendMenuW(m, MF_STRING, IDM_RESCAN,  L"Rescan & Auto-Configure Models");

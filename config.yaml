@@ -19,7 +19,7 @@ models:
     cmd: >-
       F:/llama.cpp/llama-server.exe -m "F:/llama.cpp/models/Gemma-4-E4B-Abliterated.Q4_K_M.gguf"
       --model-draft "F:/llama.cpp/models/gemma-4-E4B-it-assistant.Q4_K_M.gguf" --spec-type draft-mtp
-      --host 127.0.0.1 --port ${PORT} --ctx-size 8192 --batch-size 4096 --ubatch-size 2048 --n-gpu-layers 99 --flash-attn off --no-webui
+      --host 127.0.0.1 --port ${PORT} --ctx-size 131072 --batch-size 4096 --ubatch-size 2048 --n-gpu-layers 99 --flash-attn off --no-webui
 
   ministral-3-14b-reasoning-2512-q4_k_m:
     ttl: 300
