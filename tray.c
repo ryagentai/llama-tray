@@ -870,7 +870,8 @@ static BOOL InitInstance(HINSTANCE hInst) {
                                 WS_POPUP | WS_BORDER, 0, 0, 380, 96,
                                 NULL, NULL, hInst, NULL);
 
-    HICON icon = MakeIcon(RGB(24, 26, 34), RGB(90, 160, 255), L"LL");
+    HICON icon = LoadIcon(hInst, MAKEINTRESOURCE(1));
+    if (!icon) icon = MakeIcon(RGB(24, 26, 34), RGB(90, 160, 255), L"LL");
     memset(&g_nid, 0, sizeof(g_nid));
     g_nid.cbSize           = sizeof(NOTIFYICONDATAW);
     g_nid.hWnd             = g_hwnd;
