@@ -581,7 +581,7 @@ static DWORD WINAPI WorkerScanThread(LPVOID lpParam) {
                 WideCharToMultiByte(CP_UTF8, 0, matched_assistant, -1, assist_path_u, sizeof(assist_path_u), NULL, NULL);
                 for (char *p = assist_path_u; *p; p++) if (*p == '\\') *p = '/';
                 fprintf(f, "\n      --model-draft \"%s\" --spec-type draft-mtp", assist_path_u);
-            } else if (wcsstr(lower, L"qwen3.8") || wcsstr(lower, L"mtp")) {
+            } else if ((wcsstr(lower, L"qwen3.8-9b") || wcsstr(lower, L"qwen3.8_9b") || wcsstr(lower, L"mtp")) && !wcsstr(lower, L"turbo") && !wcsstr(lower, L"14b")) {
                 fprintf(f, "\n      --spec-type draft-mtp");
             }
 
