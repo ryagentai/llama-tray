@@ -595,10 +595,9 @@ static DWORD WINAPI WorkerScanThread(LPVOID lpParam) {
                 fprintf(f, "\n      --mmproj \"%s\"", mm_path_u);
             }
 
-            if (files[i].size > (7ULL * 1024 * 1024 * 1024) || wcsstr(lower, L"14b") || wcsstr(lower, L"32b") || wcsstr(lower, L"70b")) {
-                fprintf(f, "\n      --cache-type-k q8_0 --cache-type-v q8_0");
-            }
-
+            int ctx = 131072;
+            int is_gemma = (wcsstr(lower, L"gemma") != NULL || wcsstr(lower, L"e4b") != NULL);
+            const char *fa_str = is_gemma ? "--flash-attn off" : "--flash-attn on";
             int is_reasoning = (wcsstr(lower, L"reasoning") != NULL || wcsstr(lower, L"r1") != NULL || wcsstr(lower, L"qwq") != NULL);
             const char *reason_str = is_reasoning ? "--reasoning-budget 4096 --reasoning-format deepseek-legacy" : "--reasoning off";
 
