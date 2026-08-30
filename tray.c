@@ -599,11 +599,10 @@ static DWORD WINAPI WorkerScanThread(LPVOID lpParam) {
                 fprintf(f, "\n      --cache-type-k q8_0 --cache-type-v q8_0");
             }
 
-            int ctx = 131072;
-            int is_gemma = (wcsstr(lower, L"gemma") != NULL || wcsstr(lower, L"e4b") != NULL);
-            const char *fa_str = is_gemma ? "--flash-attn off" : "--flash-attn on";
+            int is_reasoning = (wcsstr(lower, L"reasoning") != NULL || wcsstr(lower, L"r1") != NULL || wcsstr(lower, L"qwq") != NULL);
+            const char *reason_str = is_reasoning ? "--reasoning-budget 4096 --reasoning-format deepseek-legacy" : "--reasoning off";
 
-            fprintf(f, "\n      --host 127.0.0.1 --port ${PORT} --ctx-size %d --batch-size 4096 --ubatch-size 2048 --n-gpu-layers 99 %s --reasoning-budget 4096 --reasoning-format deepseek-legacy --no-webui\n\n", ctx, fa_str);
+            fprintf(f, "\n      --host 127.0.0.1 --port ${PORT} --ctx-size %d --batch-size 4096 --ubatch-size 2048 --n-gpu-layers 99 %s %s --no-webui\n\n", ctx, fa_str, reason_str);
         }
         fclose(f);
     }
