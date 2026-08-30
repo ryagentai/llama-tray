@@ -922,15 +922,13 @@ static BOOL InitInstance(HINSTANCE hInst) {
 int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmd, int nShow) {
     (void)hPrev; (void)cmd; (void)nShow;
 
-    HWND existing = FindWindowW(L"LlamaTrayWClass", NULL);
-    if (existing) {
-        PostMessageW(existing, WM_COMMAND, IDM_RESCAN, 0);
-        return 0;
-    }
-
-    HANDLE hMutex = CreateMutexW(NULL, TRUE, L"Local\\LlamaTraySingleInstance");
+    HANDLE hMutex = CreateMutexW(NULL, FALSE, L"Local\\LlamaTraySingleInstance");
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
-        CloseHandle(hMutex);
+        HWND existing = FindWindowW(L"LlamaTrayWClass", NULL);
+        if (existing) {
+            PostMessageW(existing, WM_COMMAND, IDM_RESCAN, 0);
+        }
+        if (hMutex) CloseHandle(hMutex);
         return 0;
     }
 
@@ -942,5 +940,6 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmd, int nShow) {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
+    if (hMutex) CloseHandle(hMutex);
     return 0;
 }
